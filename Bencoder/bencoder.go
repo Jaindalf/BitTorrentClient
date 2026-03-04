@@ -2,17 +2,15 @@ package main
 
 import (
 	"fmt"
-	"time"
 )
 
 func IsNumeric(ch byte) bool {
 	return ch >= '0' && ch <= '9'
 }
 
-func ParseString(EncodedString string) (int,string) {
+func ParseString(EncodedString string, i int) (int, string) {
 
 	bytesToRead := 0
-	i := 0
 
 	// Parse number before colon
 	for i < len(EncodedString) && IsNumeric(EncodedString[i]) {
@@ -37,21 +35,23 @@ func ParseString(EncodedString string) (int,string) {
 	word := EncodedString[i : i+bytesToRead]
 	fmt.Println("Word:", word)
 	fmt.Println(string(EncodedString[i+bytesToRead]))
+	fmt.Println("The function returns to point", (i + bytesToRead))
 
-	return (i+bytesToRead),word
+	return (i + bytesToRead), word
 
 }
-//returns next index and number
-func ParseInt(EncodedInt string) (int,int) {
+
+// returns next index and number
+func ParseInt(EncodedInt string, i int) (int, int) {
 
 	integer := 0
-	i := 0
-	sign := 1 //0 for pos and 1  for negative
 
-	if len(EncodedInt)<3 {
+	sign := 1 
+
+	if len(EncodedInt) < 3 {
 
 		panic("EncodedInt is too short.")
-		
+
 	}
 
 	if EncodedInt[i] != 'i' {
@@ -69,7 +69,7 @@ func ParseInt(EncodedInt string) (int,int) {
 
 	//check for leading zeroes
 
-	if EncodedInt[i] == '0' &&len(EncodedInt)>3{
+	if EncodedInt[i] == '0' && len(EncodedInt) > 3 {
 		fmt.Println("Leading  zeroes not  allowed.")
 		panic("Corrupted  data")
 	}
@@ -93,55 +93,82 @@ func ParseInt(EncodedInt string) (int,int) {
 
 	fmt.Println("int:", integer)
 	fmt.Println("index:", i) //This is the index where the limiting 'e' is present.
-	return (i),integer  // we should return the index  of  the next element 
+	return (i + 1), integer  // we should return the index after the limiting e(when working with lists)
 }
 
-func ParseList(EncodedList string) {
-	i:=0
+func ParseList(EncodedList string, i int) int {
 
 	//Check  if this is a list at all
-	if EncodedList[i]!='l'{
+	if EncodedList[i] != 'l' {
 		panic("This is not a list.")
 	}
 	i++
 
-	for i<len(EncodedList){
-		fmt.Println("The value of i is:",i)
-		time.Sleep(3 * time.Second) 
+	for i < len(EncodedList) {
 
-
-		ch:=EncodedList[i]
+		ch := EncodedList[i]
 
 		if IsNumeric(ch) {
-			i,_=ParseString(EncodedList[i:])
-			fmt.Println("The value of i(below parsestring) is:",i)
-			
-		} else if ch=='i'{
-			i,_=ParseInt(EncodedList[i:])
-			fmt.Println("The value of i(below parse int) is:",i)
+			i, _ = ParseString(EncodedList, i)
+
+		} else if ch == 'i' {
+			i, _ = ParseInt(EncodedList, i)
+
+		} else if ch == 'e' {
+			fmt.Println("End of list reached.")
+			return (i + 1)
+			//break
+		} else if ch == 'l' {
+			i = ParseList(EncodedList, i)
 		}
 
-		//fmt.Println("The value of i is:",i)
-
-
 	}
-	
 
+	panic("List not properly terminated")
 
 }
 
-func main() {
-	//EncodedString := "5:sphami3e"
-	//EncodedInt := "i2e"
-	
-	//ParseString(EncodedString)
-	//ParseInt(EncodedInt)
-	//EncodedList:="li5e3:tyre" //equivalent to ["spam",34]
-	//ParseList(EncodedList)
-	ei:="li2e3"
-	index,integer:=(ParseInt(ei[1:]))
+func ParseDict(EncodedDict string, i int) int {
 
-	fmt.Println("INDEX RETURNED",index)
-	fmt.Println("VALUE AT RETURNED INDEX:",string(ei[index]))
-	fmt.Println("INTEGER RETURNED:",integer)
+	//check if this is even a dictionary
+	if EncodedDict[i] != 'd' {
+
+		panic("This is not a dictionary.")
+
+	}
+	i++
+
+	//Now we loop over the entire dictionary
+	for i < len(EncodedDict) {
+		ch := EncodedDict[i]
+
+		if IsNumeric(ch) {
+			i, _ = ParseString(EncodedDict, i)
+
+		} else if ch == 'i' {
+			i, _ = ParseInt(EncodedDict, i)
+
+		} else if ch == 'e' {
+			fmt.Println("End of dict reached.")
+			return (i + 1)
+			//break
+		} else if ch == 'l' {
+			i = ParseList(EncodedDict, i)
+		} else if ch=='d'{
+			i=ParseDict(EncodedDict,i)
+		}
+	}
+
+	return i
+}
+
+func main() {
+
+	//EncodedList := "l4:spaml3:hami2eee"
+	EncodedDict := "d9:publisher3:bob17:publisher-webpage15:www.example.com18:publisher.location4:homee"
+
+	//d4:spaml1:a1:bee represents the dictionary { "spam" => [ "a", "b" ] }
+	//ParseList(EncodedList, 0)
+	ParseDict(EncodedDict,0)
+
 }
