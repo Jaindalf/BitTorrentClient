@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"strconv"
+	
 )
 
 func IsNumeric(ch byte) bool {
@@ -119,7 +119,7 @@ func ParseList(EncodedList string, i int) (int, []interface{}) {
 		} else if ch == 'i' {
 			var integer int
 			i, integer = ParseInt(EncodedList, i)
-			mySlice = append(mySlice, strconv.Itoa(integer))
+			mySlice = append(mySlice, integer)
 
 		} else if ch == 'e' {
 			fmt.Println("End of list reached.")
@@ -193,7 +193,9 @@ func ParseDict(EncodedDict string, i int) (int, map[string]interface{}) {
 
 func main() {
 
-	EncodedDict := "d9:publisher3:bob17:publisher-webpage15:www.example.com18:publisher.location4:homee"
+	EncodedDict := "d9:publisher3:bob17:publisher-webpage15:www.example.com18:publisher.location4:home3:keyi73ee"
+
+	//Go doesn't have ordered maps  ༽◺_◿༼ ༽◺_◿༼ ༽◺_◿༼
 	_, di := ParseDict(EncodedDict, 0)
 	fmt.Println(di)
 
