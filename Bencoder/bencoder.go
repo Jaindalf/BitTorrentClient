@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 )
 
 func IsNumeric(ch byte) bool {
@@ -46,7 +47,7 @@ func ParseInt(EncodedInt string, i int) (int, int) {
 
 	integer := 0
 
-	sign := 1 
+	sign := 1
 
 	if len(EncodedInt) < 3 {
 
@@ -96,7 +97,9 @@ func ParseInt(EncodedInt string, i int) (int, int) {
 	return (i + 1), integer  // we should return the index after the limiting e(when working with lists)
 }
 
-func ParseList(EncodedList string, i int) int {
+func ParseList(EncodedList string, i int) (int, []interface{}) {
+
+	var mySlice []interface{}
 
 	//Check  if this is a list at all
 	if EncodedList[i] != 'l' {
@@ -109,17 +112,23 @@ func ParseList(EncodedList string, i int) int {
 		ch := EncodedList[i]
 
 		if IsNumeric(ch) {
-			i, _ = ParseString(EncodedList, i)
+			var word string
+			i, word = ParseString(EncodedList, i)
+			mySlice = append(mySlice, word)
 
 		} else if ch == 'i' {
-			i, _ = ParseInt(EncodedList, i)
+			var integer int
+			i, integer = ParseInt(EncodedList, i)
+			mySlice = append(mySlice, strconv.Itoa(integer))
 
 		} else if ch == 'e' {
 			fmt.Println("End of list reached.")
-			return (i + 1)
+			return (i + 1), mySlice
 			//break
 		} else if ch == 'l' {
-			i = ParseList(EncodedList, i)
+			var innerSlice []interface{}
+			i, innerSlice = ParseList(EncodedList, i)
+			mySlice = append(mySlice, innerSlice)
 		}
 
 	}
@@ -128,7 +137,10 @@ func ParseList(EncodedList string, i int) int {
 
 }
 
-func ParseDict(EncodedDict string, i int) int {
+func ParseDict(EncodedDict string, i int) (int, map[string]interface{}) {
+
+	//Dictionaries are encoded as follows: d<bencoded string><bencoded element>e
+	// the key can only be a string
 
 	//check if this is even a dictionary
 	if EncodedDict[i] != 'd' {
@@ -138,37 +150,51 @@ func ParseDict(EncodedDict string, i int) int {
 	}
 	i++
 
+	dict := make(map[string]interface{})
+
 	//Now we loop over the entire dictionary
 	for i < len(EncodedDict) {
+
+		// End of dictionary
+		if EncodedDict[i] == 'e' {
+			fmt.Println("End of dict reached.")
+			return i + 1, dict
+		}
+
+		// Parse key (always a string)
+		var key string
+		i, key = ParseString(EncodedDict, i)
+
+		var value interface{}
 		ch := EncodedDict[i]
 
 		if IsNumeric(ch) {
-			i, _ = ParseString(EncodedDict, i)
+			i, value = ParseString(EncodedDict, i)
 
 		} else if ch == 'i' {
-			i, _ = ParseInt(EncodedDict, i)
+			i, value = ParseInt(EncodedDict, i)
 
 		} else if ch == 'e' {
 			fmt.Println("End of dict reached.")
-			return (i + 1)
+			return (i + 1), dict
 			//break
 		} else if ch == 'l' {
-			i = ParseList(EncodedDict, i)
-		} else if ch=='d'{
-			i=ParseDict(EncodedDict,i)
+			i, value = ParseList(EncodedDict, i) ///
+		} else if ch == 'd' {
+			i, value = ParseDict(EncodedDict, i)
 		}
+		// Store key-value pair
+		dict[key] = value
+
 	}
 
-	return i
+	panic("Dictionary not properly terminated.")
 }
 
 func main() {
 
-	//EncodedList := "l4:spaml3:hami2eee"
 	EncodedDict := "d9:publisher3:bob17:publisher-webpage15:www.example.com18:publisher.location4:homee"
-
-	//d4:spaml1:a1:bee represents the dictionary { "spam" => [ "a", "b" ] }
-	//ParseList(EncodedList, 0)
-	ParseDict(EncodedDict,0)
+	_, di := ParseDict(EncodedDict, 0)
+	fmt.Println(di)
 
 }
