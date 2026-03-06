@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	
 )
 
 func IsNumeric(ch byte) bool {
@@ -137,7 +136,7 @@ func ParseList(EncodedList string, i int) (int, []interface{}) {
 
 }
 
-func ParseDict(EncodedDict string, i int) (int, map[string]interface{}) {
+func ParseDict(EncodedDict string, i int) (int, map[string]interface{},[]interface{}) {
 
 	//Dictionaries are encoded as follows: d<bencoded string><bencoded element>e
 	// the key can only be a string
@@ -152,18 +151,22 @@ func ParseDict(EncodedDict string, i int) (int, map[string]interface{}) {
 
 	dict := make(map[string]interface{})
 
+	var keys []interface{}
+
 	//Now we loop over the entire dictionary
 	for i < len(EncodedDict) {
 
 		// End of dictionary
 		if EncodedDict[i] == 'e' {
 			fmt.Println("End of dict reached.")
-			return i + 1, dict
+			return i + 1, dict,keys
 		}
 
 		// Parse key (always a string)
 		var key string
 		i, key = ParseString(EncodedDict, i)
+		fmt.Println("KEY:", key)
+		keys = append(keys, key)
 
 		var value interface{}
 		ch := EncodedDict[i]
@@ -176,27 +179,39 @@ func ParseDict(EncodedDict string, i int) (int, map[string]interface{}) {
 
 		} else if ch == 'e' {
 			fmt.Println("End of dict reached.")
-			return (i + 1), dict
+			return (i + 1), dict,keys
 			//break
 		} else if ch == 'l' {
 			i, value = ParseList(EncodedDict, i) ///
 		} else if ch == 'd' {
-			i, value = ParseDict(EncodedDict, i)
+			var innerkeys []interface{}
+			fmt.Println("parsing dict.")
+			i, value,innerkeys = ParseDict(EncodedDict, i)
+			keys=append(keys, innerkeys)
+			
 		}
 		// Store key-value pair
 		dict[key] = value
+		
 
 	}
 
 	panic("Dictionary not properly terminated.")
 }
 
+
+
 func main() {
 
-	EncodedDict := "d9:publisher3:bob17:publisher-webpage15:www.example.com18:publisher.location4:home3:keyi73ee"
-
+	//EncodedDict := "d9:publisher3:bob17:publisher-webpage15:www.example.com18:publisher.location4:home3:keyi73e4:prani339999ee"
+	//EncodedDict := "d4:userd4:name5:Alice3:agei25ee6:status6:onlinee"
 	//Go doesn't have ordered maps  ༽◺_◿༼ ༽◺_◿༼ ༽◺_◿༼
-	_, di := ParseDict(EncodedDict, 0)
-	fmt.Println(di)
+		str := "d8:announce41:http://bttracker.debian.org:6969/announce7:comment35:\"Debian CD from cdimage.debian.org\"13:creation datei1391870037e9:httpseedsl85:http://cdimage.debian.org/cdimage/release/7.4.0/iso-cd/debian-7.4.0-amd64-netinst.iso85:http://cdimage.debian.org/cdimage/archive/7.4.0/iso-cd/debian-7.4.0-amd64-netinst.isoe4:infod6:lengthi232783872e4:name30:debian-7.4.0-amd64-netinst.iso12:piece lengthi262144e6:pieces0:ee"
+
+	_, _,keys := ParseDict(str, 0)
+	fmt.Println(keys)
+
+	
+
 
 }
