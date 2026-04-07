@@ -4,12 +4,11 @@ import (
 	"fmt"
 )
 
-
 type BDict []BEntry
 
 type BEntry struct {
-    Key   string
-    Value interface{}
+	Key   string
+	Value interface{}
 }
 
 func IsNumeric(ch byte) bool {
@@ -50,10 +49,19 @@ func ParseString(EncodedString []byte, i int) (int, []byte) {
 
 // returns next index and number
 func ParseInt(EncodedInt []byte, i int) (int, int) {
-	
+
+	//Bounds check
+	if i>=len(EncodedInt)||EncodedInt[i] !='i'{
+		panic("Invalid format:missing 'i'")
+	}
+	i++
+
+	if i>=len(EncodedInt){
+		panic("Unexpected end after 'i'")
+	}
 
 	integer := 0
-
+	digitFound:=false
 	sign := 1
 
 	if len(EncodedInt) < 3 {
@@ -62,10 +70,7 @@ func ParseInt(EncodedInt []byte, i int) (int, int) {
 
 	}
 
-	if EncodedInt[i] != 'i' {
-		panic("Invalid format:No begining delimiter")
-	}
-	i++
+
 
 	//Check for negative
 
@@ -73,18 +78,23 @@ func ParseInt(EncodedInt []byte, i int) (int, int) {
 		sign = -1
 		i++
 
+		if i>=len(EncodedInt){
+			panic("Unexpected end after '-'")
+		}
+
+		//-0 is not allowed
 		if i < len(EncodedInt) && EncodedInt[i] == '0' {
-            panic("i-0e is not valid bencode")
-        }
+			panic("i-0e is not valid bencode")
+		}
 
 	}
 
 	//check for leading zeroes
 	//li0ee is allowed
 	//li03e is not
-	if EncodedInt[i]=='0' &&i+1<len(EncodedInt) &&EncodedInt[i+1]!='e' {
-		
-		panic("Corrupted data : Leading zeroes");
+	if EncodedInt[i] == '0' && i+1 < len(EncodedInt) && EncodedInt[i+1] != 'e' {
+
+		panic("Corrupted data : Leading zeroes")
 	}
 
 	for i < len(EncodedInt) && EncodedInt[i] != 'e' && EncodedInt[i] != 'i' {
@@ -92,21 +102,27 @@ func ParseInt(EncodedInt []byte, i int) (int, int) {
 
 			panic("Unexpected value in EncodedInt")
 		}
+		digitFound=true
 		digit := int(EncodedInt[i] - '0')
 		integer = integer*10 + digit
 		i++
 
 	}
 
-	if EncodedInt[i] != 'e' {
+	if i>=len(EncodedInt)||EncodedInt[i] != 'e' {
 		panic("e was not found at the end of encoded int.")
 	}
 
 	integer = sign * integer
 
+
+	if !digitFound{
+		panic("Invalid integer: No digits")
+	}
+
 	//fmt.Println("int:", integer)
 	//fmt.Println("index:", i) //This is the index where the limiting 'e' is present.
-	return (i + 1), integer  // we should return the index after the limiting e(when working with lists)
+	return (i + 1), integer // we should return the index after the limiting e(when working with lists)
 }
 
 func ParseList(EncodedList []byte, i int) (int, []interface{}) {
@@ -119,18 +135,20 @@ func ParseList(EncodedList []byte, i int) (int, []interface{}) {
 	}
 	i++
 
-	for i<len(EncodedList)&&EncodedList[i]!= 'e' {
+	for i < len(EncodedList) && EncodedList[i] != 'e' {
 
 		//ch := EncodedList[i]
 		var val interface{}
-		i,val=ParseValue(EncodedList,i)
+		i, val = ParseValue(EncodedList, i)
 		mySlice = append(mySlice, val)
-		
 
 	}
-	return i+1,mySlice
 
-	
+
+	if i >= len(EncodedList) || EncodedList[i] != 'e' {
+    panic("List not terminated properly")
+}
+	return i + 1, mySlice
 
 }
 
@@ -148,7 +166,7 @@ func ParseDict(EncodedDict []byte, i int) (int, BDict) {
 	i++
 
 	var dict BDict
-
+	var prevKey string
 
 	//Now we loop over the entire dictionary
 	for i < len(EncodedDict) {
@@ -163,7 +181,13 @@ func ParseDict(EncodedDict []byte, i int) (int, BDict) {
 		var key []byte
 		i, key = ParseString(EncodedDict, i)
 		//fmt.Println("KEY:", key)
-		
+		currentKey := string(key)
+
+		if prevKey != "" && currentKey < prevKey {
+			fmt.Println("Dictionary keys not sorted lexicographically")
+		}
+
+		prevKey = currentKey
 
 		var value interface{}
 		//ch := EncodedDict[i]
@@ -174,22 +198,18 @@ func ParseDict(EncodedDict []byte, i int) (int, BDict) {
 			Key:   string(key),
 			Value: value,
 		})
-		
 
 	}
 
 	panic("Dictionary not properly terminated.")
 }
 
+func ParseValue(EncodedData []byte, i int) (int, interface{}) {
 
-func ParseValue(EncodedData[] byte,i int)(int,interface{}){
-
-
-	switch EncodedData[i]{
+	switch EncodedData[i] {
 
 	case 'i':
-		return ParseInt(EncodedData,i)
-	
+		return ParseInt(EncodedData, i)
 
 	case 'l':
 		return ParseList(EncodedData, i)
@@ -205,38 +225,36 @@ func ParseValue(EncodedData[] byte,i int)(int,interface{}){
 
 	panic("invalid bencode")
 
-
 }
 
-
 func main() {
-    tests := []struct {
-        name  string
-        input string
-    }{
-        {"zero int",       "i0e"},
-        {"negative int",   "i-7e"},
-        {"empty string",   "0:"},
-        {"basic string",   "4:spam"},
-        {"empty list",     "le"},
-        {"int list",       "li1ei2ei3ee"},
-        {"nested list",    "ll4:abcdeli99eee"},
-        {"empty dict",     "de"},
-        {"simple dict",    "d3:agei25e4:name5:Alicee"},
-        {"nested dict",    "d4:userd4:name5:Alice3:agei25eee"},
-        {"real torrent",   "d8:announce35:http://tracker.example.com/announce4:infod4:name8:test.iso6:lengthi1024e12:piece lengthi512e6:pieces20:aaaaabbbbbcccccdddddee"},
-    }
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"zero int", "i0e"},
+		{"negative int", "i-7e"},
+		{"empty string", "0:"},
+		{"basic string", "4:spam"},
+		{"empty list", "le"},
+		{"int list", "li1ei2ei3ee"},
+		{"nested list", "ll4:abcdeli99eee"},
+		{"empty dict", "de"},
+		{"simple dict", "d3:agei25e4:name5:Alicee"},
+		{"nested dict", "d4:userd4:name5:Alice3:agei25eee"},
+		{"real torrent", "d8:announce35:http://tracker.example.com/announce4:infod4:name8:test.iso6:lengthi1024e12:piece lengthi512e6:pieces20:aaaaabbbbbcccccdddddee"},
+	}
 
-    for _, tt := range tests {
-        fmt.Printf("\n=== %s ===\n", tt.name)
-        func() {
-            defer func() {
-                if r := recover(); r != nil {
-                    fmt.Printf("PANIC: %v\n", r)
-                }
-            }()
-            _, v := ParseValue([]byte(tt.input), 0)
-            fmt.Printf("OK: %#v\n", v)
-        }()
-    }
+	for _, tt := range tests {
+		fmt.Printf("\n=== %s ===\n", tt.name)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("PANIC: %v\n", r)
+				}
+			}()
+			_, v := ParseValue([]byte(tt.input), 0)
+			fmt.Printf("OK: %#v\n", v)
+		}()
+	}
 }
