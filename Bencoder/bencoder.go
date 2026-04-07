@@ -206,7 +206,7 @@ func main() {
 	//EncodedDict := "d9:publisher3:bob17:publisher-webpage15:www.example.com18:publisher.location4:home3:keyi73e4:prani339999ee"
 	//EncodedDict := "d4:userd4:name5:Alice3:agei25ee6:status6:onlinee"
 	//Go doesn't have ordered maps  ༽◺_◿༼ ༽◺_◿༼ ༽◺_◿༼
-		str := "d8:announce41:http://bttracker.debian.org:6969/announce7:comment35:\"Debian CD from cdimage.debian.org\"13:creation datei1391870037e9:httpseedsl85:http://cdimage.debian.org/cdimage/release/7.4.0/iso-cd/debian-7.4.0-amd64-netinst.iso85:http://cdimage.debian.org/cdimage/archive/7.4.0/iso-cd/debian-7.4.0-amd64-netinst.isoe4:infod6:lengthi232783872e4:name30:debian-7.4.0-amd64-netinst.iso12:piece lengthi262144e6:pieces0:ee"
+	str := "d8:announce41:http://bttracker.debian.org:6969/announce7:comment35:\"Debian CD from cdimage.debian.org\"13:creation datei1391870037e9:httpseedsl85:http://cdimage.debian.org/cdimage/release/7.4.0/iso-cd/debian-7.4.0-amd64-netinst.iso85:http://cdimage.debian.org/cdimage/archive/7.4.0/iso-cd/debian-7.4.0-amd64-netinst.isoe4:infod6:lengthi232783872e4:name30:debian-7.4.0-amd64-netinst.iso12:piece lengthi262144e6:pieces0:ee"
 
 	_, _,keys := ParseDict(str, 0)
 	fmt.Println(keys)
