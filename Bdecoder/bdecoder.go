@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 )
 
 type BDict []BEntry
@@ -51,17 +52,17 @@ func ParseString(EncodedString []byte, i int) (int, []byte) {
 func ParseInt(EncodedInt []byte, i int) (int, int) {
 
 	//Bounds check
-	if i>=len(EncodedInt)||EncodedInt[i] !='i'{
+	if i >= len(EncodedInt) || EncodedInt[i] != 'i' {
 		panic("Invalid format:missing 'i'")
 	}
 	i++
 
-	if i>=len(EncodedInt){
+	if i >= len(EncodedInt) {
 		panic("Unexpected end after 'i'")
 	}
 
 	integer := 0
-	digitFound:=false
+	digitFound := false
 	sign := 1
 
 	if len(EncodedInt) < 3 {
@@ -70,15 +71,13 @@ func ParseInt(EncodedInt []byte, i int) (int, int) {
 
 	}
 
-
-
 	//Check for negative
 
 	if EncodedInt[i] == '-' {
 		sign = -1
 		i++
 
-		if i>=len(EncodedInt){
+		if i >= len(EncodedInt) {
 			panic("Unexpected end after '-'")
 		}
 
@@ -97,26 +96,25 @@ func ParseInt(EncodedInt []byte, i int) (int, int) {
 		panic("Corrupted data : Leading zeroes")
 	}
 
-	for i < len(EncodedInt) && EncodedInt[i] != 'e' && EncodedInt[i] != 'i' {
+	for i < len(EncodedInt) && EncodedInt[i] != 'e' {
 		if !IsNumeric(EncodedInt[i]) {
 
 			panic("Unexpected value in EncodedInt")
 		}
-		digitFound=true
+		digitFound = true
 		digit := int(EncodedInt[i] - '0')
 		integer = integer*10 + digit
 		i++
 
 	}
 
-	if i>=len(EncodedInt)||EncodedInt[i] != 'e' {
+	if i >= len(EncodedInt) || EncodedInt[i] != 'e' {
 		panic("e was not found at the end of encoded int.")
 	}
 
 	integer = sign * integer
 
-
-	if !digitFound{
+	if !digitFound {
 		panic("Invalid integer: No digits")
 	}
 
@@ -144,10 +142,9 @@ func ParseList(EncodedList []byte, i int) (int, []interface{}) {
 
 	}
 
-
 	if i >= len(EncodedList) || EncodedList[i] != 'e' {
-    panic("List not terminated properly")
-}
+		panic("List not terminated properly")
+	}
 	return i + 1, mySlice
 
 }
@@ -227,7 +224,68 @@ func ParseValue(EncodedData []byte, i int) (int, interface{}) {
 
 }
 
-func main() {
+func spaces(n int) string {
+	return fmt.Sprintf("%*s", n, "")
+}
+
+func PrettyPrint(v interface{}, indent int) {
+
+	prefix := spaces(indent)
+	switch val := v.(type) {
+
+	case int:
+		fmt.Printf("%s%d\n", prefix, val)
+
+	case []byte:
+	isPrintable := true
+	for _, b := range val {
+		if b < 32 || b > 126 {
+			isPrintable = false
+			break
+		}
+	}
+
+	if isPrintable {
+		fmt.Printf("%s%s\n", prefix, string(val))
+	} else {
+		fmt.Printf("%s<%d bytes binary data>\n", prefix, len(val))
+	}
+
+	case string:
+		fmt.Printf("%s%s\n", prefix, val)
+
+	case []interface{}:
+
+		fmt.Printf("%s[\n", prefix)
+		for _, item := range val {
+			PrettyPrint(item, indent+2)
+		}
+		fmt.Printf("%s]\n", prefix)
+
+	case BDict:
+		fmt.Printf("%s{\n", prefix)
+		for _, entry := range val {
+			fmt.Printf("%s  %s: ", prefix, entry.Key)
+
+			// Inline simple values
+			switch entry.Value.(type) {
+			case int, string, []byte:
+				PrettyPrint(entry.Value, 0)
+			default:
+				fmt.Println()
+				PrettyPrint(entry.Value, indent+4)
+			}
+		}
+		fmt.Printf("%s}\n", prefix)
+
+	default:
+		fmt.Printf("%s<unknown>\n", prefix)
+
+	}
+
+}
+
+func test() {
 	tests := []struct {
 		name  string
 		input string
@@ -242,7 +300,7 @@ func main() {
 		{"empty dict", "de"},
 		{"simple dict", "d3:agei25e4:name5:Alicee"},
 		{"nested dict", "d4:userd4:name5:Alice3:agei25eee"},
-		{"real torrent", "d8:announce35:http://tracker.example.com/announce4:infod4:name8:test.iso6:lengthi1024e12:piece lengthi512e6:pieces20:aaaaabbbbbcccccdddddee"},
+		{"real torrent", "d8:announce35:http://tracker.example.com/announce4:infod4:name8:test.iso6:lengthi1024e12:piece lengthi512e6:pieces21:aaaaabbbbbcccccdddddeee"},
 	}
 
 	for _, tt := range tests {
@@ -254,7 +312,24 @@ func main() {
 				}
 			}()
 			_, v := ParseValue([]byte(tt.input), 0)
-			fmt.Printf("OK: %#v\n", v)
+			//fmt.Printf("OK: %#v\n", v)
+			PrettyPrint(v, 0)
 		}()
 	}
+}
+
+func main() {
+
+	data, err := os.ReadFile(`C:\Users\Pranjal\Desktop\Projects\BitTorrentClient\archlinux-2026.04.01-x86_64.iso.torrent`)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+		return
+	}
+
+	//content := string(data)
+	//fmt.Println(content)
+
+	_,v:=ParseValue(data,0)
+	PrettyPrint(v,0)
+
 }
