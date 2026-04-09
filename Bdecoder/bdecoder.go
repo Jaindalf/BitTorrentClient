@@ -344,36 +344,103 @@ func Get(dict BDict, key string) interface{} {
 			return entry.Value
 		}
 	}
+	fmt.Println(key+"is not present.")
 	return nil
+
 }
 
 // Build InfoDict
 func BuildInfo(info BDict) InfoDict {
 	var i InfoDict
-	i.Name = string(Get(info, "name").([]byte)) //we know that name is just a slice of bytes
-	i.Length = int(Get(info, "length").(int))
-	i.PieceLength = Get(info, "piece length").(int)
-	val, ok := Get(info, "pieces").([]byte)
-	if !ok {
-		panic("pieces missing or wrong type")
-	}
-	i.Pieces = val
-	return i
 
+	// Name
+	nameRaw := Get(info, "name")
+	if nameRaw == nil {
+		panic("BuildInfo: 'name' key missing")
+	}
+	name, ok := nameRaw.([]byte)
+	if !ok {
+		panic("BuildInfo: 'name' is not a string")
+	}
+	i.Name = string(name)
+
+	// Length
+	lengthRaw := Get(info, "length")
+	if lengthRaw == nil {
+		panic("BuildInfo: 'length' key missing")
+	}
+	length, ok := lengthRaw.(int)
+	if !ok {
+		panic("BuildInfo: 'length' is not an integer")
+	}
+	i.Length = length
+
+	// PieceLength
+	pieceLengthRaw := Get(info, "piece length")
+	if pieceLengthRaw == nil {
+		panic("BuildInfo: 'piece length' key missing")
+	}
+	pieceLength, ok := pieceLengthRaw.(int)
+	if !ok {
+		panic("BuildInfo: 'piece length' is not an integer")
+	}
+	i.PieceLength = pieceLength
+
+	// Pieces
+	piecesRaw := Get(info, "pieces")
+	if piecesRaw == nil {
+		panic("BuildInfo: 'pieces' key missing")
+	}
+	pieces, ok := piecesRaw.([]byte)
+	if !ok {
+		panic("BuildInfo: 'pieces' is not a byte string")
+	}
+	if len(pieces)%20 != 0 {
+		panic("BuildInfo: 'pieces' length is not a multiple of 20")
+	}
+	i.Pieces = pieces
+
+	return i
 }
 
 // Build Torrent
 func BuildTorrent(root BDict) Torrent {
 	var t Torrent
-	t.Announce = string(Get(root, "announce").([]byte))
-	infoRaw := Get(root, "info").(BDict)
-	t.Info = BuildInfo(infoRaw)
+
+	AnnounceRaw:=Get(root,"announce")
+	if AnnounceRaw ==nil {
+
+		panic("BuildTorrent: 'announce' is missing.")
+		
+	}
+	Announce,ok:=AnnounceRaw.([]byte)
+	if !ok{
+		panic("BuildTorrent: 'announce' is not a byte string")
+	}
+
+	t.Announce=string(Announce)
+
+
+	//t.Announce = string(Get(root, "announce").([]byte))
+	infoRaw := Get(root, "info")
+	if infoRaw ==nil{
+		panic("BuildTorrent: 'info' is missing.")
+	}
+
+	info,ok:=infoRaw.(BDict)
+
+	if(!ok){
+		panic("BuildTorrent: 'info' is not a BDict")
+	}
+
+	t.Info = BuildInfo(info)
 	return t
 }
 
 func main() {
+	
 
-	data, err := os.ReadFile(`C:\Users\Pranjal\Desktop\Projects\BitTorrentClient\archlinux-2026.04.01-x86_64.iso.torrent`)
+	data, err := os.ReadFile(`C:\Users\Pranjal\Desktop\Projects\BitTorrentClient\one-piece.torrent`)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
 		return
@@ -383,9 +450,9 @@ func main() {
 	//fmt.Println(content)
 
 	_, v := ParseValue(data, 0)
-	//PrettyPrint(v, 0)
+	PrettyPrint(v, 0)
 	d:=v.(BDict)
 	t:=BuildTorrent(d)
-	fmt.Println(t)
+	fmt.Println(t.Info.Name)
 
 }
