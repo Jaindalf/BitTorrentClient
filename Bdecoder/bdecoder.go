@@ -5,17 +5,33 @@ import (
 	"os"
 )
 
-type BDict []BEntry
-
+// BEntry represents a single entry of a bencoded dictionary.
 type BEntry struct {
-	Key   string
-	Value interface{}
+	Key   string      //In bencoding dictionary keys are always strings.
+	Value interface{} //Interface is used because dict values can be of any type(int,string,list,dict)
 }
 
+// BDict is a dynamic array(technical term is slice) of BEntry (We have to do this to preserve the order of dict entries as go maps are unordered. )
+type BDict []BEntry
+
+type InfoDict struct {
+	Name        string
+	Length      int
+	PieceLength int
+	Pieces      []byte
+}
+
+type Torrent struct {
+	Announce string
+	Info     InfoDict
+}
+
+// Tells us wheter a byte is a ascii number or not.
 func IsNumeric(ch byte) bool {
 	return ch >= '0' && ch <= '9'
 }
 
+// Returns a word as an array of bytes and the index of the character just after the word.
 func ParseString(EncodedString []byte, i int) (int, []byte) {
 
 	bytesToRead := 0
@@ -35,10 +51,11 @@ func ParseString(EncodedString []byte, i int) (int, []byte) {
 
 	//fmt.Println("Length:", bytesToRead)
 
-	// Read exact number of bytes
 	if i+bytesToRead > len(EncodedString) {
 		panic("invalid format: not enough bytes")
 	}
+
+	// Read exact number of bytes
 
 	word := EncodedString[i : i+bytesToRead]
 	//fmt.Println("Word:", word)
@@ -48,7 +65,7 @@ func ParseString(EncodedString []byte, i int) (int, []byte) {
 
 }
 
-// returns next index and number
+// returns a number as an integr and the index of the character just after the number.
 func ParseInt(EncodedInt []byte, i int) (int, int) {
 
 	//Bounds check
@@ -125,6 +142,7 @@ func ParseInt(EncodedInt []byte, i int) (int, int) {
 
 func ParseList(EncodedList []byte, i int) (int, []interface{}) {
 
+	//Create a slice of interfaces
 	var mySlice []interface{}
 
 	//Check  if this is a list at all
@@ -237,19 +255,19 @@ func PrettyPrint(v interface{}, indent int) {
 		fmt.Printf("%s%d\n", prefix, val)
 
 	case []byte:
-	isPrintable := true
-	for _, b := range val {
-		if b < 32 || b > 126 {
-			isPrintable = false
-			break
+		isPrintable := true
+		for _, b := range val {
+			if b < 32 || b > 126 {
+				isPrintable = false
+				break
+			}
 		}
-	}
 
-	if isPrintable {
-		fmt.Printf("%s%s\n", prefix, string(val))
-	} else {
-		fmt.Printf("%s<%d bytes binary data>\n", prefix, len(val))
-	}
+		if isPrintable {
+			fmt.Printf("%s%s\n", prefix, string(val))
+		} else {
+			fmt.Printf("%s<%d bytes binary data>\n", prefix, len(val))
+		}
 
 	case string:
 		fmt.Printf("%s%s\n", prefix, val)
@@ -318,6 +336,41 @@ func test() {
 	}
 }
 
+// Get values from keys
+func Get(dict BDict, key string) interface{} {
+
+	for _, entry := range dict {
+		if entry.Key == key {
+			return entry.Value
+		}
+	}
+	return nil
+}
+
+// Build InfoDict
+func BuildInfo(info BDict) InfoDict {
+	var i InfoDict
+	i.Name = string(Get(info, "name").([]byte)) //we know that name is just a slice of bytes
+	i.Length = int(Get(info, "length").(int))
+	i.PieceLength = Get(info, "piece length").(int)
+	val, ok := Get(info, "pieces").([]byte)
+	if !ok {
+		panic("pieces missing or wrong type")
+	}
+	i.Pieces = val
+	return i
+
+}
+
+// Build Torrent
+func BuildTorrent(root BDict) Torrent {
+	var t Torrent
+	t.Announce = string(Get(root, "announce").([]byte))
+	infoRaw := Get(root, "info").(BDict)
+	t.Info = BuildInfo(infoRaw)
+	return t
+}
+
 func main() {
 
 	data, err := os.ReadFile(`C:\Users\Pranjal\Desktop\Projects\BitTorrentClient\archlinux-2026.04.01-x86_64.iso.torrent`)
@@ -329,7 +382,10 @@ func main() {
 	//content := string(data)
 	//fmt.Println(content)
 
-	_,v:=ParseValue(data,0)
-	PrettyPrint(v,0)
+	_, v := ParseValue(data, 0)
+	//PrettyPrint(v, 0)
+	d:=v.(BDict)
+	t:=BuildTorrent(d)
+	fmt.Println(t)
 
 }
