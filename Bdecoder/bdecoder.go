@@ -2,6 +2,7 @@ package bdecoder
 
 import (
 	"fmt"
+	"crypto/sha1"
 	
 )
 
@@ -459,5 +460,10 @@ func BuildTorrent(root BDict, ih [20]byte) Torrent {
 
 	t.Info = BuildInfo(info,ih)
 	return t
+}
+
+func getInfoHash(rawInfoDict []byte) [20]byte {
+	hash := sha1.Sum(rawInfoDict)
+	return hash
 }
 
