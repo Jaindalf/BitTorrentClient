@@ -1,19 +1,31 @@
-package main
+package response
 
 import (
 	"crypto/rand"
-	
-	"encoding/json"
+
+
 	"fmt"
-	"os"
+
+	"io"
 	"net/http"
+	"os"
+
 )
 import . "BitTorrentClient/Bdecoder"
 
 // Info hashes
+type TrackerResponse struct {
+	Interval int
+	Peers    []Peer
+}
 
+type Peer struct {
+	ID   string
+	IP   string
+	Port int
+}
 
-func Url(t Torrent) {
+func Url(t Torrent) string {
 	url := ""
 	url += t.Announce
 	url += "?"
@@ -32,8 +44,12 @@ func Url(t Torrent) {
 	url += "&compact=1"
 
 	fmt.Println(url)
+	return url
 
 }
+
+var PeerId [20]byte
+
 func generatePeerID() [20]byte {
 	var peerID [20]byte
 
@@ -46,6 +62,7 @@ func generatePeerID() [20]byte {
 	if err != nil {
 		panic(err)
 	}
+	PeerId=peerID
 
 	return peerID
 }
@@ -71,39 +88,78 @@ func HashEncoder(ih [20]byte) string {
 
 }
 
-
-
-
-
-
-func main() {
-
-	data, err := os.ReadFile(`C:\Users\Pranjal\Desktop\Projects\BitTorrentClient\MX-25.1_fluxbox_x64.iso.torrent`)
+func GetTrackerResponse(torrentFile string) (BDict,Torrent){
+	data, err := os.ReadFile(torrentFile)
 	if err != nil {
-		fmt.Println("Error reading file:", err)
-		return
+		fmt.Println("Error reading the torrent file.")
+		return nil,Torrent{}
 	}
 
-	_, v, rawInfoDict := ParseValue(data, 0)
-	hash := getInfoHash(rawInfoDict)
-	PrettyPrint(v, 0)
-	d := v.(BDict)
-	t := BuildTorrent(d, hash)
-	
-	Url(t)
+	_, rawDict, rawInfoDict := ParseValue(data, 0)
+	infoDictHash := GetInfoHash(rawInfoDict)
+	Dict := rawDict.(BDict)
+	fileTorrent := BuildTorrent(Dict, infoDictHash)
 
-	inf, e := os.ReadFile(`C:\Users\Pranjal\Desktop\Projects\BitTorrentClient\resp`)
+	resp, e := http.Get(Url(fileTorrent))
 	if e != nil {
-		fmt.Println("Error reading file:", err)
-		return
+		fmt.Println("Error in response:", e)
+		return nil,Torrent{}
 	}
 
-	_, vs, _ := ParseValue(inf, 0)
-	PrettyPrint(vs, 0)
-	vw, er := json.MarshalIndent(vs, "", "  ")
-	if er != nil {
-		panic(er)
+	defer resp.Body.Close()
+
+	rawRespBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response body: ", err)
 	}
 
-	os.WriteFile("output.json", vw, 0644)
+	_, respBody, _ := ParseValue(rawRespBody, 0)
+	respBodyDict := respBody.(BDict)
+	return respBodyDict,fileTorrent
+	
+
 }
+
+func ParseTrackerResponse(resp BDict) TrackerResponse {
+	var result TrackerResponse
+
+	for _, item := range resp {
+		switch item.Key {
+		case "interval":
+			result.Interval = (Get(resp, "interval")).(int)
+
+		case "peers":
+			peersRaw:=(Get(resp,"peers")).([]interface{})
+
+			for _,p:=range peersRaw{
+				//Each peer is a BDict
+				peerDict:=p.(BDict)
+
+				var peer Peer
+				for _,field:=range peerDict{
+					switch field.Key{
+					case "id":
+						peer.ID=string((Get(peerDict,"id")).([]byte))
+
+					case "ip":
+						peer.IP=string((Get(peerDict,"ip")).([]byte))
+					
+					case "port":
+						peer.Port=(Get(peerDict,"port")).(int)	
+					
+					}
+
+				}
+				result.Peers=append(result.Peers, peer)
+
+
+			}
+
+		}
+
+	}
+	return result
+
+}
+
+

@@ -462,8 +462,8 @@ func BuildTorrent(root BDict, ih [20]byte) Torrent {
 	return t
 }
 
-func getInfoHash(rawInfoDict []byte) [20]byte {
+func GetInfoHash(rawInfoDict []byte) [20]byte {
 	hash := sha1.Sum(rawInfoDict)
 	return hash
-}
+}	
 
