@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -19,7 +20,7 @@ const pstrlen = byte(len(pstr))
 
 //handshake: <pstrlen><pstr><reserved><info_hash><peer_id>
 
-func VerifyHandshake(buf []byte, t Torrent,pid []byte) {
+func VerifyHandshake(buf []byte, t Torrent, pid []byte) {
 	offset := 0
 	if len(buf) < 68 {
 		panic("Incomplete hanshake response")
@@ -45,22 +46,21 @@ func VerifyHandshake(buf []byte, t Torrent,pid []byte) {
 	var infoHash [20]byte
 	copy(infoHash[:], buf[offset:offset+20])
 
-	if (!bytes.Equal(t.Info.InfoHash[:],infoHash[:])){
+	if !bytes.Equal(t.Info.InfoHash[:], infoHash[:]) {
 		fmt.Println("Invalid Info Hash:")
-		
+
 	}
 	offset += 20
 
 	var peerID [20]byte
 	copy(peerID[:], buf[offset:offset+20])
 
-	if (!bytes.Equal(pid[:],peerID[:])){
+	if !bytes.Equal(pid[:], peerID[:]) {
 		fmt.Println("Invalid peer ID:")
 
-		fmt.Println("----PID-----",pid)
-		fmt.Println("----peerID----",peerID)
+		fmt.Println("----PID-----", pid)
+		fmt.Println("----peerID----", peerID)
 	}
-
 
 }
 
@@ -106,7 +106,7 @@ func NormalizeIP(ip string) string {
 
 var h []byte
 
-func AttemptConn(t Torrent, resp TrackerResponse, ti time.Duration) {
+func AttemptConn(t Torrent, resp TrackerResponse, ti time.Duration) net.Conn {
 
 	hit := 0
 	miss := 0
@@ -123,7 +123,7 @@ func AttemptConn(t Torrent, resp TrackerResponse, ti time.Duration) {
 		}
 		hit++
 		fmt.Println("Connected\t", addr)
-		defer conn.Close()
+		//defer conn.Close()
 		h := BuildHandshake(t)
 		_, e := conn.Write(h)
 		if e != nil {
@@ -137,9 +137,9 @@ func AttemptConn(t Torrent, resp TrackerResponse, ti time.Duration) {
 			fmt.Println("Error:", err)
 		}
 
-		fmt.Println("val pid",(val.ID))
-		VerifyHandshake(buffer,t,[]byte(val.ID))
-		return
+		fmt.Println("val pid", (val.ID))
+		VerifyHandshake(buffer, t, []byte(val.ID))
+		return conn
 
 	}
 
@@ -147,25 +147,67 @@ func AttemptConn(t Torrent, resp TrackerResponse, ti time.Duration) {
 
 	fmt.Println("Hits:", hit)
 	fmt.Println("Misses:", miss)
+	return nil
 
 }
 
+type Message struct {
+	ID      uint8
+	Payload []byte
+}
+
+var PeerMessages = map[string]Message{
+	"Choke":        {ID: 0, Payload: nil},
+	"UnChoke":      {ID: 1, Payload: nil},
+	"Interested":   {ID: 2, Payload: nil},
+	"UnInterested": {ID: 3, Payload: nil},
+}
+
+func KeepAlive(conn net.Conn) error {
+	buf := make([]byte, 4)
+	_, er := conn.Write(buf)
+	return er
+
+}
+
+func SendMessage(conn net.Conn, msg *Message) error {
+	//First filter out keep-alive
+
+	length := uint32(len(msg.Payload) + 1) //the 1 is for the msg.ID
+	buf := make([]byte, (length + 4))      //the 4 is for the message length
+
+	//fill in the len field
+	binary.BigEndian.PutUint32(buf[0:4], length)
+	//fill in msg.Id
+	buf[4] = msg.ID
+
+	// payload
+	copy(buf[5:], msg.Payload)
+
+	_, err := conn.Write(buf)
+	fmt.Println(err)
+	return err
+
+}
 
 func main() {
-	g := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
+	b := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
+	//b:=`C:\Users\Pranjal\Downloads\bazzite-43.20260420-deck-stable-amd64.iso.torrent`
 	//s:=`one-piece.torrent`
-	//t := `MX-25.1_fluxbox_x64.iso.torrent`
-	rawResp, torrent := GetTrackerResponse(g)
+	//b := `C:\Users\Pranjal\Downloads\xubuntu-26.04-desktop-amd64.iso.torrent`
+	rawResp, torrent := GetTrackerResponse(b)
 	resp := ParseTrackerResponse(rawResp)
 	for i, v := range resp.Peers {
-		fmt.Println("Index:", i,"\tID:", v.ID,"\tIp:", v.IP, "\tPort:", v.Port)
+		fmt.Println("Index:", i, "\tID:", v.ID, "\tIp:", v.IP, "\tPort:", v.Port)
 	}
 
 	h = BuildHandshake(torrent)
-	//fmt.Println("ip of 692:", resp.Peers[3].Port)
-	//port:=string(resp.Peers[3].Port)
-	//	fmt.Println(port)
 
-	AttemptConn(torrent,resp, time.Second)
+
+	con := AttemptConn(torrent, resp, time.Second)
+	e := KeepAlive(con)
+	fmt.Println(e)
+	m := PeerMessages["UnChoke"]
+	SendMessage(con, &m)
 
 }
