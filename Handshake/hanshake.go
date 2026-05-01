@@ -156,7 +156,7 @@ type Message struct {
 	Payload []byte
 }
 
-var PeerMessages = map[string]Message{
+var StaticPeerMessages = map[string]Message{
 	"Choke":        {ID: 0, Payload: nil},
 	"UnChoke":      {ID: 1, Payload: nil},
 	"Interested":   {ID: 2, Payload: nil},
@@ -167,6 +167,48 @@ func KeepAlive(conn net.Conn) error {
 	buf := make([]byte, 4)
 	_, er := conn.Write(buf)
 	return er
+
+}
+
+func Have(pieceIndex uint32) *Message {
+	buf := make([]byte, 4)
+	binary.BigEndian.PutUint32(buf[0:4], pieceIndex)
+	return &Message{ID: 4, Payload: buf}
+}
+
+func BitField(bitfield []byte) *Message {
+	return &Message{ID: 5, Payload: bitfield}
+
+}
+
+func Request(index, begin, length uint32) *Message {
+	buf := make([]byte, 12)
+	binary.BigEndian.PutUint32(buf[0:4], index)
+	binary.BigEndian.PutUint32(buf[4:8], begin)
+	binary.BigEndian.PutUint32(buf[8:12], length)
+	return &Message{ID: 6, Payload: buf}
+}
+
+func Cancel(index, begin, length uint32) *Message {
+	buf := make([]byte, 12)
+	binary.BigEndian.PutUint32(buf[0:4], index)
+	binary.BigEndian.PutUint32(buf[4:8], begin)
+	binary.BigEndian.PutUint32(buf[8:12], length)
+	return &Message{ID: 8, Payload: buf}
+}
+
+func Piece(index, begin uint32, block []byte) *Message {
+	buf := make([]byte, (8 + len(block)))
+	binary.BigEndian.PutUint32(buf[0:4], index)
+	binary.BigEndian.PutUint32(buf[4:8], begin)
+	copy(buf[8:], block[:])
+	return &Message{ID: 7, Payload: buf}
+}
+
+func Port(listenPort uint16) *Message {
+	buf := make([]byte, 2)
+	binary.BigEndian.PutUint16(buf[0:2], listenPort)
+	return &Message{ID: 9, Payload: buf}
 
 }
 
@@ -190,11 +232,51 @@ func SendMessage(conn net.Conn, msg *Message) error {
 
 }
 
+func ReceiveMessage(conn net.Conn) *Message {
+	
+	lenbuf := make([]byte, 4)
+	_, err := io.ReadFull(conn, lenbuf)
+	if err != nil {
+		fmt.Println("Error reading Length:", err)
+	}
+
+	length := binary.BigEndian.Uint32(lenbuf)
+	if length == 0 {
+		fmt.Println("KEEP-ALIVE MESSAGE")
+		return nil
+
+	}
+
+	fmt.Println("LENGTH:", length)
+
+	msgBuf := make([]byte, length)
+	_, err = io.ReadFull(conn, msgBuf)
+	if err != nil {
+		fmt.Println("failed to read message: %w", err)
+		return nil
+	}
+
+
+	m := Message{ID: uint8(msgBuf[0]), Payload: msgBuf[1:]}
+
+
+	
+	fmt.Println("msg id:", m.ID)
+	
+	if length != uint32((len(m.Payload) + 1)) {
+		fmt.Println("Length missmatch.Incomplete payload.")
+
+	}
+	return &m
+
+}
+
 func main() {
 	b := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
 	//b:=`C:\Users\Pranjal\Downloads\bazzite-43.20260420-deck-stable-amd64.iso.torrent`
 	//s:=`one-piece.torrent`
 	//b := `C:\Users\Pranjal\Downloads\xubuntu-26.04-desktop-amd64.iso.torrent`
+	//b:=`C:\Users\Pranjal\Downloads\cosmos-laundromat.torrent`
 	rawResp, torrent := GetTrackerResponse(b)
 	resp := ParseTrackerResponse(rawResp)
 	for i, v := range resp.Peers {
@@ -203,11 +285,26 @@ func main() {
 
 	h = BuildHandshake(torrent)
 
-
 	con := AttemptConn(torrent, resp, time.Second)
+
+	msg := ReceiveMessage(con)
+	if msg.ID == 5 {
+		fmt.Println("Bitfield")
+		fmt.Printf("Received bitfield (%d bytes)\n", len(msg.Payload))
+		i:=(StaticPeerMessages["Interested"])
+		SendMessage(con,&i)
+
+		m:=ReceiveMessage(con)
+		if m.ID==1{
+			    fmt.Println("Unchoked!",m.ID)
+
+		}
+	}
 	e := KeepAlive(con)
 	fmt.Println(e)
-	m := PeerMessages["UnChoke"]
-	SendMessage(con, &m)
+	//m := StaticPeerMessages["Interested"]
+	//SendMessage(con, &m)
+
+	
 
 }
