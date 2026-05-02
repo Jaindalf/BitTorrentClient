@@ -9,7 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
+	//"os"
+	"math"
 	. "BitTorrentClient/Bdecoder"
 
 	. "BitTorrentClient/URL"
@@ -233,7 +234,7 @@ func SendMessage(conn net.Conn, msg *Message) error {
 }
 
 func ReceiveMessage(conn net.Conn) *Message {
-	
+
 	lenbuf := make([]byte, 4)
 	_, err := io.ReadFull(conn, lenbuf)
 	if err != nil {
@@ -243,7 +244,7 @@ func ReceiveMessage(conn net.Conn) *Message {
 	length := binary.BigEndian.Uint32(lenbuf)
 	if length == 0 {
 		fmt.Println("KEEP-ALIVE MESSAGE")
-		return nil
+		return &Message{ID:100,Payload: nil}
 
 	}
 
@@ -256,13 +257,10 @@ func ReceiveMessage(conn net.Conn) *Message {
 		return nil
 	}
 
-
 	m := Message{ID: uint8(msgBuf[0]), Payload: msgBuf[1:]}
 
-
-	
 	fmt.Println("msg id:", m.ID)
-	
+
 	if length != uint32((len(m.Payload) + 1)) {
 		fmt.Println("Length missmatch.Incomplete payload.")
 
@@ -270,6 +268,58 @@ func ReceiveMessage(conn net.Conn) *Message {
 	return &m
 
 }
+
+func Pieces(conn net.Conn,t Torrent) {
+
+	pieceCount := uint32(len(t.Info.Pieces) / 20)
+	fmt.Println("Number of pieces:", pieceCount)
+
+	pieceSize := uint32(t.Info.PieceLength)
+	fmt.Println("Size of pieces", pieceSize)
+
+	fileSize:=pieceCount*pieceSize
+	fmt.Println("Size of file(in bytes):",fileSize)
+	blockSize:=uint32(math.Pow(2,14))
+	var  j uint32;
+	var i uint32;
+
+	for  i=0;i<pieceCount;i++{
+
+		for j=0;j<pieceSize-1;j++{
+
+			offset:=blockSize*j
+
+			r:=Request(i,(offset),(blockSize))
+			fmt.Println("Asking for piece ",j)
+			SendMessage(conn,r)
+			time.Sleep(time.Second*3)
+
+			msg:=ReceiveMessage(conn)
+			
+			fmt.Println("MSSSG ID:",msg.ID,"Response ",j)
+
+		}
+
+	}
+
+}
+
+/*func main() {
+	b := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
+
+	data, err := os.ReadFile(b)
+	if err != nil {
+		fmt.Println("Error reading the torrent file.")
+		
+	}
+
+
+	_, rawDict, rawInfoDict := ParseValue(data, 0)
+	infoDictHash := GetInfoHash(rawInfoDict)
+	Dict := rawDict.(BDict)
+	fileTorrent := BuildTorrent(Dict, infoDictHash)
+	Pieces(fileTorrent)
+}*/
 
 func main() {
 	b := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
@@ -300,11 +350,13 @@ func main() {
 
 		}
 	}
-	e := KeepAlive(con)
-	fmt.Println(e)
-	//m := StaticPeerMessages["Interested"]
-	//SendMessage(con, &m)
+	//e := KeepAlive(con)
+	//fmt.Println(e)
+	m := StaticPeerMessages["Interested"]
+	SendMessage(con, &m)
 
-	
+	Pieces(con,torrent)
+
 
 }
+
