@@ -3,73 +3,56 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	//"flag"
+
+	//"encoding/gob"
 	"fmt"
 	"io"
 	"net"
+
+	//	"os"
 	"strconv"
 	"strings"
 	"time"
+
 	//"os"
-	"math"
 	. "BitTorrentClient/Bdecoder"
+	"math"
 
 	. "BitTorrentClient/URL"
+	"sync"
 )
+
+//var h []byte
 
 const pstr = "BitTorrent protocol"
 const pstrlen = byte(len(pstr))
 
-//handshake: <pstrlen><pstr><reserved><info_hash><peer_id>
-
-func VerifyHandshake(buf []byte, t Torrent, pid []byte) {
-	offset := 0
-	if len(buf) < 68 {
-		panic("Incomplete hanshake response")
-
-	}
-	pstrlen := int(buf[offset])
-
-	if pstrlen != 19 {
-		fmt.Println("invalid pstrlen: ", pstrlen)
-	}
-	offset++
-
-	pstr := string(buf[offset : offset+pstrlen])
-	if pstr != "BitTorrent protocol" {
-		fmt.Println("invalid protocol: ", pstr)
-	}
-
-	offset += len(pstr)
-
-	// skip reserved (8 bytes)
-	offset += 8
-
-	var infoHash [20]byte
-	copy(infoHash[:], buf[offset:offset+20])
-
-	if !bytes.Equal(t.Info.InfoHash[:], infoHash[:]) {
-		fmt.Println("Invalid Info Hash:")
-
-	}
-	offset += 20
-
-	var peerID [20]byte
-	copy(peerID[:], buf[offset:offset+20])
-
-	if !bytes.Equal(pid[:], peerID[:]) {
-		fmt.Println("Invalid peer ID:")
-
-		fmt.Println("----PID-----", pid)
-		fmt.Println("----peerID----", peerID)
-	}
-
-}
-
+// handshake: <pstrlen><pstr><reserved><info_hash><peer_id>
 type Handshake struct {
 	pstrlen  int
 	pstr     string
 	infoHash [20]byte
 	peerID   [20]byte
+}
+
+type Message struct {
+	ID      uint8
+	Payload []byte
+}
+
+var StaticPeerMessages = map[string]Message{
+	"Choke":        {ID: 0, Payload: nil},
+	"UnChoke":      {ID: 1, Payload: nil},
+	"Interested":   {ID: 2, Payload: nil},
+	"UnInterested": {ID: 3, Payload: nil},
+}
+
+func NormalizeIP(ip string) string {
+	if strings.HasPrefix(ip, "::ffff:") {
+		return strings.TrimPrefix(ip, "::ffff:")
+	}
+	return ip
 }
 
 func BuildHandshake(t Torrent) []byte {
@@ -93,24 +76,59 @@ func BuildHandshake(t Torrent) []byte {
 
 	copy(buf[writer:], PeerId[:])
 	writer += 20
-	fmt.Println(buf)
 	return buf
 
 }
 
-func NormalizeIP(ip string) string {
-	if strings.HasPrefix(ip, "::ffff:") {
-		return strings.TrimPrefix(ip, "::ffff:")
+func VerifyHandshake(buf []byte, t Torrent) bool {
+	offset := 0
+	if len(buf) < 68 {
+		fmt.Println("Incomplete hanshake response")
+		return false
+
 	}
-	return ip
+	pstrlen := int(buf[offset])
+
+	if pstrlen != 19 {
+		fmt.Println("invalid pstrlen: ", pstrlen)
+		return false
+	}
+	offset++
+
+	pstr := string(buf[offset : offset+pstrlen])
+	if pstr != "BitTorrent protocol" {
+		fmt.Println("invalid protocol: ", pstr)
+		return false
+	}
+
+	offset += len(pstr)
+
+	// skip reserved (8 bytes)
+	offset += 8
+
+	var infoHash [20]byte
+	copy(infoHash[:], buf[offset:offset+20])
+
+	if !bytes.Equal(t.Info.InfoHash[:], infoHash[:]) {
+		fmt.Println("Invalid Info Hash:")
+		return false
+
+	}
+	offset += 20
+	return true
+
 }
 
-var h []byte
+type Connection struct {
+	conn     net.Conn
+	choked   bool
+	bitfield []byte
+	PeerIp   string
+}
 
-func AttemptConn(t Torrent, resp TrackerResponse, ti time.Duration) net.Conn {
+func AttemptConn(t Torrent, resp TrackerResponse, ti time.Duration) []Connection {
 
-	hit := 0
-	miss := 0
+	var Connections []Connection
 
 	for index, val := range resp.Peers {
 		ip := NormalizeIP(val.IP)
@@ -118,17 +136,15 @@ func AttemptConn(t Torrent, resp TrackerResponse, ti time.Duration) net.Conn {
 
 		conn, err := net.DialTimeout("tcp", addr, ti)
 		if err != nil {
-			miss++
 			fmt.Println("Missed index\t", index)
 			continue
 		}
-		hit++
-		fmt.Println("Connected\t", addr)
-		//defer conn.Close()
+		fmt.Println("Connected[", index, "] to: ", addr)
 		h := BuildHandshake(t)
 		_, e := conn.Write(h)
 		if e != nil {
 			fmt.Println("Error:", e)
+			continue
 		}
 
 		buffer := make([]byte, 68)
@@ -136,32 +152,25 @@ func AttemptConn(t Torrent, resp TrackerResponse, ti time.Duration) net.Conn {
 		_, er := io.ReadFull(conn, buffer)
 		if er != nil {
 			fmt.Println("Error:", err)
+			continue
 		}
 
-		fmt.Println("val pid", (val.ID))
-		VerifyHandshake(buffer, t, []byte(val.ID))
-		return conn
+		if !VerifyHandshake(buffer, t) {
+			//return nil
+			continue
+		}
+		var p Connection
+		p.conn = conn
+		p.PeerIp = ip
+		p.choked = true
+		p.bitfield = nil
+		Connections = append(Connections, p)
+		//return conn
 
 	}
 
-	fmt.Println("\nSummary:")
+	return Connections
 
-	fmt.Println("Hits:", hit)
-	fmt.Println("Misses:", miss)
-	return nil
-
-}
-
-type Message struct {
-	ID      uint8
-	Payload []byte
-}
-
-var StaticPeerMessages = map[string]Message{
-	"Choke":        {ID: 0, Payload: nil},
-	"UnChoke":      {ID: 1, Payload: nil},
-	"Interested":   {ID: 2, Payload: nil},
-	"UnInterested": {ID: 3, Payload: nil},
 }
 
 func KeepAlive(conn net.Conn) error {
@@ -244,7 +253,7 @@ func ReceiveMessage(conn net.Conn) *Message {
 	length := binary.BigEndian.Uint32(lenbuf)
 	if length == 0 {
 		fmt.Println("KEEP-ALIVE MESSAGE")
-		return &Message{ID:100,Payload: nil}
+		return &Message{ID: 100, Payload: nil} //this is not an actual id this is just so we can have a msg to return
 
 	}
 
@@ -269,7 +278,42 @@ func ReceiveMessage(conn net.Conn) *Message {
 
 }
 
-func Pieces(conn net.Conn,t Torrent) {
+func R(conn net.Conn) {
+
+	i := 8
+	for i < 100 {
+		fmt.Println("READING")
+
+		m := ReceiveMessage(conn)
+		switch m.ID {
+
+		case 5:
+			fmt.Println("Bitfield")
+			time.Sleep(time.Second)
+
+		case 1:
+			fmt.Println("Unchoked")
+			time.Sleep(time.Second)
+
+		case 100:
+			fmt.Println("Keep-alive")
+			time.Sleep(time.Second)
+
+		}
+
+	}
+
+}
+
+func S(conn net.Conn) {
+	fmt.Println("SENDING")
+	m := (StaticPeerMessages["Interested"])
+	SendMessage(conn, &m)
+	time.Sleep(time.Second)
+
+}
+
+func Pieces(conn net.Conn, t Torrent) {
 
 	pieceCount := uint32(len(t.Info.Pieces) / 20)
 	fmt.Println("Number of pieces:", pieceCount)
@@ -277,26 +321,26 @@ func Pieces(conn net.Conn,t Torrent) {
 	pieceSize := uint32(t.Info.PieceLength)
 	fmt.Println("Size of pieces", pieceSize)
 
-	fileSize:=pieceCount*pieceSize
-	fmt.Println("Size of file(in bytes):",fileSize)
-	blockSize:=uint32(math.Pow(2,14))
-	var  j uint32;
-	var i uint32;
+	fileSize := pieceCount * pieceSize
+	fmt.Println("Size of file(in bytes):", fileSize)
+	blockSize := uint32(math.Pow(2, 14))
+	var j uint32
+	var i uint32
 
-	for  i=0;i<pieceCount;i++{
+	for i = 0; i < pieceCount; i++ {
 
-		for j=0;j<pieceSize-1;j++{
+		for j = 0; j < pieceSize-1; j++ {
 
-			offset:=blockSize*j
+			offset := blockSize * j
 
-			r:=Request(i,(offset),(blockSize))
-			fmt.Println("Asking for piece ",j)
-			SendMessage(conn,r)
-			time.Sleep(time.Second*3)
+			r := Request(i, (offset), (blockSize))
+			fmt.Println("Asking for piece ", j)
+			SendMessage(conn, r)
+			time.Sleep(time.Second * 3)
 
-			msg:=ReceiveMessage(conn)
-			
-			fmt.Println("MSSSG ID:",msg.ID,"Response ",j)
+			msg := ReceiveMessage(conn)
+
+			fmt.Println("MSSSG ID:", msg.ID, "Response ", j)
 
 		}
 
@@ -304,59 +348,53 @@ func Pieces(conn net.Conn,t Torrent) {
 
 }
 
-/*func main() {
-	b := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
+func getBitfield(peer *Connection, wg *sync.WaitGroup) {
+	defer wg.Done()
+	tries := 0
+	maxtries := 3
+	for tries < maxtries {
+		m := ReceiveMessage(peer.conn)
+		if m.ID == 5 {
+			peer.bitfield = m.Payload
+			fmt.Println("Received bitflied of", peer.PeerIp)
+			//wg.Done()
 
-	data, err := os.ReadFile(b)
-	if err != nil {
-		fmt.Println("Error reading the torrent file.")
-		
+			return
+
+		} else {
+			tries++
+			time.Sleep(2 * time.Second)
+
+		}
+
 	}
+	fmt.Println("tried for:",tries)
+//	wg.Done()
 
-
-	_, rawDict, rawInfoDict := ParseValue(data, 0)
-	infoDictHash := GetInfoHash(rawInfoDict)
-	Dict := rawDict.(BDict)
-	fileTorrent := BuildTorrent(Dict, infoDictHash)
-	Pieces(fileTorrent)
-}*/
+}
 
 func main() {
-	b := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
-	//b:=`C:\Users\Pranjal\Downloads\bazzite-43.20260420-deck-stable-amd64.iso.torrent`
-	//s:=`one-piece.torrent`
-	//b := `C:\Users\Pranjal\Downloads\xubuntu-26.04-desktop-amd64.iso.torrent`
-	//b:=`C:\Users\Pranjal\Downloads\cosmos-laundromat.torrent`
-	rawResp, torrent := GetTrackerResponse(b)
-	resp := ParseTrackerResponse(rawResp)
-	for i, v := range resp.Peers {
-		fmt.Println("Index:", i, "\tID:", v.ID, "\tIp:", v.IP, "\tPort:", v.Port)
+	t := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
+	rawRespDict, tor := GetTrackerResponse(t)
+	respDict := ParseTrackerResponse(rawRespDict)
+
+	peers := AttemptConn(tor, respDict, 3*time.Second)
+	fmt.Println("No. of peers connected:", len(peers))
+
+	var wg sync.WaitGroup
+
+	for index, val := range peers {
+		fmt.Println("Index: ", index, "IpAddr:", val.PeerIp)
+		wg.Add(1)
+		go getBitfield(&peers[index], &wg)
 	}
 
-	h = BuildHandshake(torrent)
-
-	con := AttemptConn(torrent, resp, time.Second)
-
-	msg := ReceiveMessage(con)
-	if msg.ID == 5 {
-		fmt.Println("Bitfield")
-		fmt.Printf("Received bitfield (%d bytes)\n", len(msg.Payload))
-		i:=(StaticPeerMessages["Interested"])
-		SendMessage(con,&i)
-
-		m:=ReceiveMessage(con)
-		if m.ID==1{
-			    fmt.Println("Unchoked!",m.ID)
-
-		}
+	wg.Wait()
+	for index, val := range peers {
+		fmt.Println("Index: ", index, "Bitflied:", val.bitfield)
+		//go getBitfield(&peers[index])
 	}
-	//e := KeepAlive(con)
-	//fmt.Println(e)
-	m := StaticPeerMessages["Interested"]
-	SendMessage(con, &m)
+	//fmt.Println()
 
-	Pieces(con,torrent)
-
-
+	//Pieces(con, tor)
 }
-

@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-
+	"encoding/gob"
 )
 import . "BitTorrentClient/Bdecoder"
 
@@ -113,8 +113,34 @@ func GetTrackerResponse(torrentFile string) (BDict,Torrent){
 		fmt.Println("Error reading response body: ", err)
 	}
 
+	if rawRespBody==nil {
+		fmt.Println("SIZE OF RAW_RESP:",len(rawRespBody))
+		
+	}
+
+
+
 	_, respBody, _ := ParseValue(rawRespBody, 0)
 	respBodyDict := respBody.(BDict)
+
+	fileR,_:=os.Create("Response.gob")
+	fileT,_:=os.Create("Torrent.gob")
+
+
+	encoderR := gob.NewEncoder(fileR)
+	encoderT := gob.NewEncoder(fileT)
+
+	if err := encoderR.Encode(respBodyDict); err != nil {
+		fmt.Println("Error encoding Response:", err)
+	}
+	fileR.Close()
+
+	if err := encoderT.Encode(fileTorrent); err != nil {
+		fmt.Println("Error encoding Torrent:", err)
+	}
+	fileT.Close()
+
+
 	return respBodyDict,fileTorrent
 	
 
@@ -158,6 +184,15 @@ func ParseTrackerResponse(resp BDict) TrackerResponse {
 		}
 
 	}
+
+
+
+
+
+
+
+
+
 	return result
 
 }

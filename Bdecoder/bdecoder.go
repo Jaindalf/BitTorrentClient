@@ -189,7 +189,7 @@ func ParseDict(EncodedDict []byte, i int,info *[]byte) (int, BDict) {
 
 		// End of dictionary
 		if EncodedDict[i] == 'e' {
-			fmt.Println("End of dict reached.")
+			//fmt.Println("End of dict reached.")
 			return i + 1, dict
 		}
 
