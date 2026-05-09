@@ -1,9 +1,8 @@
 package bdecoder
 
 import (
-	"fmt"
 	"crypto/sha1"
-	
+	"fmt"
 )
 
 // BEntry represents a single entry of a bencoded dictionary.
@@ -20,7 +19,7 @@ type InfoDict struct {
 	Length      int
 	PieceLength int
 	Pieces      []byte
-   	InfoHash    [20]byte
+	InfoHash    [20]byte
 }
 
 type Torrent struct {
@@ -157,7 +156,7 @@ func ParseList(EncodedList []byte, i int) (int, []interface{}) {
 
 		//ch := EncodedList[i]
 		var val interface{}
-		i, val,_ = ParseValue(EncodedList, i)
+		i, val, _ = ParseValue(EncodedList, i)
 		mySlice = append(mySlice, val)
 
 	}
@@ -169,7 +168,7 @@ func ParseList(EncodedList []byte, i int) (int, []interface{}) {
 
 }
 
-func ParseDict(EncodedDict []byte, i int,info *[]byte) (int, BDict) {
+func ParseDict(EncodedDict []byte, i int, info *[]byte) (int, BDict) {
 
 	//Dictionaries are encoded as follows: d<bencoded string><bencoded element>e
 	// the key can only be a string
@@ -203,27 +202,21 @@ func ParseDict(EncodedDict []byte, i int,info *[]byte) (int, BDict) {
 			fmt.Println("Dictionary keys not sorted lexicographically")
 		}
 
-		
 		prevKey = currentKey
 
 		var value interface{}
 		//ch := EncodedDict[i]
 
+		if currentKey == "info" {
+			infoStart := i
+			i, value, _ = ParseValue(EncodedDict, i)
+			infoEnd := i
 
-		if currentKey=="info" {
-			infoStart:=i
-			i,value,_=ParseValue(EncodedDict,i)
-			infoEnd:=i
+			*info = EncodedDict[infoStart:infoEnd]
 
+		} else {
 
-			*info=EncodedDict[infoStart:infoEnd]
-
-			
-	
-
-		}else{
-
-			i, value,_ = ParseValue(EncodedDict, i)
+			i, value, _ = ParseValue(EncodedDict, i)
 		}
 
 		dict = append(dict, BEntry{
@@ -236,28 +229,27 @@ func ParseDict(EncodedDict []byte, i int,info *[]byte) (int, BDict) {
 	panic("Dictionary not properly terminated.")
 }
 
-func ParseValue(EncodedData []byte, i int) (int, interface{},[]byte) {
+func ParseValue(EncodedData []byte, i int) (int, interface{}, []byte) {
 	var infoHash []byte
-
 
 	switch EncodedData[i] {
 
 	case 'i':
-		vi,ii:=ParseInt(EncodedData, i)
-		return vi,ii,nil
+		vi, ii := ParseInt(EncodedData, i)
+		return vi, ii, nil
 
 	case 'l':
-		vl,il:= ParseList(EncodedData, i)
-		return vl,il,nil
+		vl, il := ParseList(EncodedData, i)
+		return vl, il, nil
 
 	case 'd':
-		vd,id:= ParseDict(EncodedData, i,&infoHash)
-		return vd,id,infoHash
+		vd, id := ParseDict(EncodedData, i, &infoHash)
+		return vd, id, infoHash
 
 	default:
 		if IsNumeric(EncodedData[i]) {
-			vs,is:= ParseString(EncodedData, i)
-			return vs,is,nil
+			vs, is := ParseString(EncodedData, i)
+			return vs, is, nil
 		}
 	}
 
@@ -352,7 +344,7 @@ func test() {
 					fmt.Printf("PANIC: %v\n", r)
 				}
 			}()
-			_, v ,_:= ParseValue([]byte(tt.input), 0)
+			_, v, _ := ParseValue([]byte(tt.input), 0)
 			//fmt.Printf("OK: %#v\n", v)
 			PrettyPrint(v, 0)
 		}()
@@ -367,13 +359,13 @@ func Get(dict BDict, key string) interface{} {
 			return entry.Value
 		}
 	}
-	fmt.Println(key+"is not present.")
+	fmt.Println(key + "is not present.")
 	return nil
 
 }
 
 // Build InfoDict
-func BuildInfo(info BDict,infoHash [20]byte) InfoDict {
+func BuildInfo(info BDict, infoHash [20]byte) InfoDict {
 	var i InfoDict
 
 	// Name
@@ -423,7 +415,7 @@ func BuildInfo(info BDict,infoHash [20]byte) InfoDict {
 	}
 	i.Pieces = pieces
 
-	i.InfoHash=infoHash
+	i.InfoHash = infoHash
 
 	return i
 }
@@ -432,38 +424,36 @@ func BuildInfo(info BDict,infoHash [20]byte) InfoDict {
 func BuildTorrent(root BDict, ih [20]byte) Torrent {
 	var t Torrent
 
-	AnnounceRaw:=Get(root,"announce")
-	if AnnounceRaw ==nil {
+	AnnounceRaw := Get(root, "announce")
+	if AnnounceRaw == nil {
 
 		panic("BuildTorrent: 'announce' is missing.")
-		
+
 	}
-	Announce,ok:=AnnounceRaw.([]byte)
-	if !ok{
+	Announce, ok := AnnounceRaw.([]byte)
+	if !ok {
 		panic("BuildTorrent: 'announce' is not a byte string")
 	}
 
-	t.Announce=string(Announce)
-
+	t.Announce = string(Announce)
 
 	//t.Announce = string(Get(root, "announce").([]byte))
 	infoRaw := Get(root, "info")
-	if infoRaw ==nil{
+	if infoRaw == nil {
 		panic("BuildTorrent: 'info' is missing.")
 	}
 
-	info,ok:=infoRaw.(BDict)
+	info, ok := infoRaw.(BDict)
 
-	if(!ok){
+	if !ok {
 		panic("BuildTorrent: 'info' is not a BDict")
 	}
 
-	t.Info = BuildInfo(info,ih)
+	t.Info = BuildInfo(info, ih)
 	return t
 }
 
 func GetInfoHash(rawInfoDict []byte) [20]byte {
 	hash := sha1.Sum(rawInfoDict)
 	return hash
-}	
-
+}

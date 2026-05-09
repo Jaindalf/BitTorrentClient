@@ -3,13 +3,12 @@ package response
 import (
 	"crypto/rand"
 
-
 	"fmt"
 
+	"encoding/gob"
 	"io"
 	"net/http"
 	"os"
-	"encoding/gob"
 )
 import . "BitTorrentClient/Bdecoder"
 
@@ -62,7 +61,7 @@ func generatePeerID() [20]byte {
 	if err != nil {
 		panic(err)
 	}
-	PeerId=peerID
+	PeerId = peerID
 
 	return peerID
 }
@@ -88,11 +87,11 @@ func HashEncoder(ih [20]byte) string {
 
 }
 
-func GetTrackerResponse(torrentFile string) (BDict,Torrent){
+func GetTrackerResponse(torrentFile string) (BDict, Torrent) {
 	data, err := os.ReadFile(torrentFile)
 	if err != nil {
 		fmt.Println("Error reading the torrent file.")
-		return nil,Torrent{}
+		return nil, Torrent{}
 	}
 
 	_, rawDict, rawInfoDict := ParseValue(data, 0)
@@ -103,7 +102,7 @@ func GetTrackerResponse(torrentFile string) (BDict,Torrent){
 	resp, e := http.Get(Url(fileTorrent))
 	if e != nil {
 		fmt.Println("Error in response:", e)
-		return nil,Torrent{}
+		return nil, Torrent{}
 	}
 
 	defer resp.Body.Close()
@@ -113,19 +112,16 @@ func GetTrackerResponse(torrentFile string) (BDict,Torrent){
 		fmt.Println("Error reading response body: ", err)
 	}
 
-	if rawRespBody==nil {
-		fmt.Println("SIZE OF RAW_RESP:",len(rawRespBody))
-		
+	if rawRespBody == nil {
+		fmt.Println("SIZE OF RAW_RESP:", len(rawRespBody))
+
 	}
-
-
 
 	_, respBody, _ := ParseValue(rawRespBody, 0)
 	respBodyDict := respBody.(BDict)
 
-	fileR,_:=os.Create("Response.gob")
-	fileT,_:=os.Create("Torrent.gob")
-
+	fileR, _ := os.Create("Response.gob")
+	fileT, _ := os.Create("Torrent.gob")
 
 	encoderR := gob.NewEncoder(fileR)
 	encoderT := gob.NewEncoder(fileT)
@@ -140,9 +136,7 @@ func GetTrackerResponse(torrentFile string) (BDict,Torrent){
 	}
 	fileT.Close()
 
-
-	return respBodyDict,fileTorrent
-	
+	return respBodyDict, fileTorrent
 
 }
 
@@ -155,29 +149,28 @@ func ParseTrackerResponse(resp BDict) TrackerResponse {
 			result.Interval = (Get(resp, "interval")).(int)
 
 		case "peers":
-			peersRaw:=(Get(resp,"peers")).([]interface{})
+			peersRaw := (Get(resp, "peers")).([]interface{})
 
-			for _,p:=range peersRaw{
+			for _, p := range peersRaw {
 				//Each peer is a BDict
-				peerDict:=p.(BDict)
+				peerDict := p.(BDict)
 
 				var peer Peer
-				for _,field:=range peerDict{
-					switch field.Key{
+				for _, field := range peerDict {
+					switch field.Key {
 					case "id":
-						peer.ID=string((Get(peerDict,"id")).([]byte))
+						peer.ID = string((Get(peerDict, "id")).([]byte))
 
 					case "ip":
-						peer.IP=string((Get(peerDict,"ip")).([]byte))
-					
+						peer.IP = string((Get(peerDict, "ip")).([]byte))
+
 					case "port":
-						peer.Port=(Get(peerDict,"port")).(int)	
-					
+						peer.Port = (Get(peerDict, "port")).(int)
+
 					}
 
 				}
-				result.Peers=append(result.Peers, peer)
-
+				result.Peers = append(result.Peers, peer)
 
 			}
 
@@ -185,16 +178,6 @@ func ParseTrackerResponse(resp BDict) TrackerResponse {
 
 	}
 
-
-
-
-
-
-
-
-
 	return result
 
 }
-
-

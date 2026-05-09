@@ -368,18 +368,37 @@ func getBitfield(peer *Connection, wg *sync.WaitGroup) {
 		}
 
 	}
-	fmt.Println("tried for:",tries)
-//	wg.Done()
+	fmt.Println("tried for:", tries)
+	//	wg.Done()
 
 }
 
-func main() {
-	t := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
-	rawRespDict, tor := GetTrackerResponse(t)
-	respDict := ParseTrackerResponse(rawRespDict)
+func unChoked(peer *Connection, wg *sync.WaitGroup) {
+	defer wg.Done()
+	tries := 0
+	maxtries := 3
+	for tries < maxtries {
+		m := ReceiveMessage(peer.conn)
+		if m.ID == 1 {
+			peer.choked = false
+			fmt.Println("Unchoked:", peer.PeerIp)
+			//wg.Done()
 
-	peers := AttemptConn(tor, respDict, 3*time.Second)
-	fmt.Println("No. of peers connected:", len(peers))
+			return
+
+		} else {
+			tries++
+			time.Sleep(2 * time.Second)
+
+		}
+
+	}
+	fmt.Println("tried for:", tries)
+	//	wg.Done()
+
+}
+
+func Formality(peers []Connection) {
 
 	var wg sync.WaitGroup
 
@@ -390,10 +409,73 @@ func main() {
 	}
 
 	wg.Wait()
+
 	for index, val := range peers {
-		fmt.Println("Index: ", index, "Bitflied:", val.bitfield)
-		//go getBitfield(&peers[index])
+		i := StaticPeerMessages["Interested"]
+		e := SendMessage(val.conn, &i)
+		if e != nil {
+			fmt.Println("[", index, "] Error sending interested msg:", e)
+
+		}
 	}
+
+	for index, val := range peers {
+		fmt.Println("Index: ", index, "IpAddr:", val.PeerIp)
+		wg.Add(1)
+		go unChoked(&peers[index], &wg)
+	}
+
+	wg.Wait()
+
+	for index, val := range peers {
+		fmt.Println("Index: ", index, "choked:", val.choked)
+
+	}
+
+	//Remove all the choked=true peers
+
+	for index, val := range peers {
+		if val.choked {
+
+			peers = append(peers[:index], peers[index+1:]...)
+
+		}
+
+	}
+
+	for index, val := range peers {
+		fmt.Println("Index: ", index, "choked:", val.choked)
+
+	}
+
+}
+
+func getPieceCount(t Torrent) uint32 {
+	return uint32(len(t.Info.Pieces) / 20)
+
+}
+func main() {
+	t := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
+	rawRespDict, tor := GetTrackerResponse(t)
+	respDict := ParseTrackerResponse(rawRespDict)
+
+	peers := AttemptConn(tor, respDict, 3*time.Second)
+	fmt.Println("No. of peers connected:", len(peers))
+
+	Formality(peers)
+
+	pieceCount := getPieceCount(tor)
+	fmt.Println("Number of pieces:", pieceCount)
+
+	pieceSize := uint32(tor.Info.PieceLength)
+	fmt.Println("Size of pieces", pieceSize)
+
+	fileSize := pieceCount * pieceSize
+	fmt.Println("Size of file(in bytes):", fileSize)
+	blockSize := uint32(math.Pow(2, 14))
+	var j uint32
+	var i uint32
+
 	//fmt.Println()
 
 	//Pieces(con, tor)
