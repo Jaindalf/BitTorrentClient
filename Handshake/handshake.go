@@ -1,4 +1,4 @@
-package main
+package handshake
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"io"
 	"net"
 
-	//	"os"
+	
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +20,7 @@ import (
 	"math"
 
 	. "BitTorrentClient/URL"
+	
 	"sync"
 )
 
@@ -124,6 +125,24 @@ type Connection struct {
 	choked   bool
 	bitfield []byte
 	PeerIp   string
+}
+
+func ParseBitfield(peer *Connection) {
+	buf := peer.bitfield
+	s := len(buf)
+	fmt.Println("No. of bytes:", s)
+	fmt.Println("No. of possible pieces:", s*8)
+
+}
+
+func PeerHas(pieceIndex uint32, peer *Connection) bool {
+	q := pieceIndex / 8
+	r := pieceIndex % 8
+
+	b := peer.bitfield[q]
+
+	return (b>>r)&1 == 1
+
 }
 
 func AttemptConn(t Torrent, resp TrackerResponse, ti time.Duration) []Connection {
@@ -278,40 +297,7 @@ func ReceiveMessage(conn net.Conn) *Message {
 
 }
 
-func R(conn net.Conn) {
 
-	i := 8
-	for i < 100 {
-		fmt.Println("READING")
-
-		m := ReceiveMessage(conn)
-		switch m.ID {
-
-		case 5:
-			fmt.Println("Bitfield")
-			time.Sleep(time.Second)
-
-		case 1:
-			fmt.Println("Unchoked")
-			time.Sleep(time.Second)
-
-		case 100:
-			fmt.Println("Keep-alive")
-			time.Sleep(time.Second)
-
-		}
-
-	}
-
-}
-
-func S(conn net.Conn) {
-	fmt.Println("SENDING")
-	m := (StaticPeerMessages["Interested"])
-	SendMessage(conn, &m)
-	time.Sleep(time.Second)
-
-}
 
 func Pieces(conn net.Conn, t Torrent) {
 
@@ -357,6 +343,7 @@ func getBitfield(peer *Connection, wg *sync.WaitGroup) {
 		if m.ID == 5 {
 			peer.bitfield = m.Payload
 			fmt.Println("Received bitflied of", peer.PeerIp)
+			
 			//wg.Done()
 
 			return
@@ -450,33 +437,35 @@ func Formality(peers []Connection) {
 
 }
 
-func getPieceCount(t Torrent) uint32 {
+func GetPieceCount(t Torrent) uint32 {
 	return uint32(len(t.Info.Pieces) / 20)
 
 }
-func main() {
-	t := `C:\Users\Pranjal\Downloads\ubuntu-26.04-desktop-amd64.iso.torrent`
-	rawRespDict, tor := GetTrackerResponse(t)
-	respDict := ParseTrackerResponse(rawRespDict)
 
-	peers := AttemptConn(tor, respDict, 3*time.Second)
-	fmt.Println("No. of peers connected:", len(peers))
-
-	Formality(peers)
-
-	pieceCount := getPieceCount(tor)
-	fmt.Println("Number of pieces:", pieceCount)
-
-	pieceSize := uint32(tor.Info.PieceLength)
-	fmt.Println("Size of pieces", pieceSize)
-
-	fileSize := pieceCount * pieceSize
-	fmt.Println("Size of file(in bytes):", fileSize)
-	blockSize := uint32(math.Pow(2, 14))
+func DownloadPiece(peer Connection, pieceIndex uint32, pieceSize uint32, blockSize uint32) []byte {
+	conn:=peer.conn
+	piece := make([]byte, pieceSize)
 	var j uint32
-	var i uint32
 
-	//fmt.Println()
+	for j = 0; j < pieceSize; j++ {
 
-	//Pieces(con, tor)
+		offset := blockSize * j
+
+		r := Request(pieceIndex, (offset), (blockSize))
+		fmt.Println("Asking for piece ", j)
+		SendMessage(conn, r)
+		time.Sleep(time.Second * 3)
+
+		msg := ReceiveMessage(conn)
+
+		fmt.Println("MSSSG ID:", msg.ID)
+		if msg.ID == 7 {
+			piece = append(piece, msg.Payload...)
+
+		}
+
+	}
+	return piece
+
 }
+

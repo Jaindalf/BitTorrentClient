@@ -5,10 +5,8 @@ import (
 
 	"fmt"
 
-	"encoding/gob"
 	"io"
 	"net/http"
-	"os"
 )
 import . "BitTorrentClient/Bdecoder"
 
@@ -24,17 +22,17 @@ type Peer struct {
 	Port int
 }
 
-func Url(t Torrent) string {
+func generateUrl(t Torrent) string {
 	url := ""
 	url += t.Announce
 	url += "?"
 
 	fmt.Println(t.Info.InfoHash)
 	url += "info_hash="
-	url += HashEncoder(t.Info.InfoHash)
+	url += hashEncoder(t.Info.InfoHash)
 	url += "&peer_id="
 
-	url += HashEncoder(generatePeerID())
+	url += hashEncoder(generatePeerID())
 
 	url += "&port=6881"
 	url += "&uploaded=0"
@@ -66,7 +64,7 @@ func generatePeerID() [20]byte {
 	return peerID
 }
 
-func HashEncoder(ih [20]byte) string {
+func hashEncoder(ih [20]byte) string {
 
 	result := ""
 
@@ -86,61 +84,7 @@ func HashEncoder(ih [20]byte) string {
 	return result
 
 }
-
-func GetTrackerResponse(torrentFile string) (BDict, Torrent) {
-	data, err := os.ReadFile(torrentFile)
-	if err != nil {
-		fmt.Println("Error reading the torrent file.")
-		return nil, Torrent{}
-	}
-
-	_, rawDict, rawInfoDict := ParseValue(data, 0)
-	infoDictHash := GetInfoHash(rawInfoDict)
-	Dict := rawDict.(BDict)
-	fileTorrent := BuildTorrent(Dict, infoDictHash)
-
-	resp, e := http.Get(Url(fileTorrent))
-	if e != nil {
-		fmt.Println("Error in response:", e)
-		return nil, Torrent{}
-	}
-
-	defer resp.Body.Close()
-
-	rawRespBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println("Error reading response body: ", err)
-	}
-
-	if rawRespBody == nil {
-		fmt.Println("SIZE OF RAW_RESP:", len(rawRespBody))
-
-	}
-
-	_, respBody, _ := ParseValue(rawRespBody, 0)
-	respBodyDict := respBody.(BDict)
-
-	fileR, _ := os.Create("Response.gob")
-	fileT, _ := os.Create("Torrent.gob")
-
-	encoderR := gob.NewEncoder(fileR)
-	encoderT := gob.NewEncoder(fileT)
-
-	if err := encoderR.Encode(respBodyDict); err != nil {
-		fmt.Println("Error encoding Response:", err)
-	}
-	fileR.Close()
-
-	if err := encoderT.Encode(fileTorrent); err != nil {
-		fmt.Println("Error encoding Torrent:", err)
-	}
-	fileT.Close()
-
-	return respBodyDict, fileTorrent
-
-}
-
-func ParseTrackerResponse(resp BDict) TrackerResponse {
+func parseTrackerResponse(resp BDict) TrackerResponse {
 	var result TrackerResponse
 
 	for _, item := range resp {
@@ -179,5 +123,33 @@ func ParseTrackerResponse(resp BDict) TrackerResponse {
 	}
 
 	return result
+
+}
+
+func GetTrackerResponse(fileTorrent Torrent) TrackerResponse {
+
+	resp, e := http.Get(generateUrl(fileTorrent))
+	if e != nil {
+		fmt.Println("Error in response:", e)
+		return TrackerResponse{}
+	}
+
+	defer resp.Body.Close()
+
+	rawRespBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response body: ", err)
+	}
+
+	if rawRespBody == nil {
+		fmt.Println("SIZE OF RAW_RESP:", len(rawRespBody))
+
+	}
+
+	_, respBody, _ := ParseValue(rawRespBody, 0)
+	respBodyDict := respBody.(BDict)
+	trackerresp := parseTrackerResponse(respBodyDict)
+
+	return trackerresp
 
 }

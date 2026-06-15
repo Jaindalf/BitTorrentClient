@@ -1,8 +1,12 @@
+//Feed in a torrent file as []byte  and  get a Torrent struct
+
+
 package bdecoder
 
 import (
 	"crypto/sha1"
 	"fmt"
+	"os"
 )
 
 // BEntry represents a single entry of a bencoded dictionary.
@@ -33,11 +37,11 @@ func IsNumeric(ch byte) bool {
 }
 
 // Returns a word as an array of bytes and the index of the character just after the word.
-func ParseString(EncodedString []byte, i int) (int, []byte) {
+func parseString(EncodedString []byte, i int) (int, []byte) {
 
 	bytesToRead := 0
 
-	// Parse number before colon
+	// parse number before colon
 	for i < len(EncodedString) && IsNumeric(EncodedString[i]) {
 		digit := int(EncodedString[i] - '0')
 		bytesToRead = bytesToRead*10 + digit
@@ -67,7 +71,7 @@ func ParseString(EncodedString []byte, i int) (int, []byte) {
 }
 
 // returns a number as an integr and the index of the character just after the number.
-func ParseInt(EncodedInt []byte, i int) (int, int) {
+func parseInt(EncodedInt []byte, i int) (int, int) {
 
 	//Bounds check
 	if i >= len(EncodedInt) || EncodedInt[i] != 'i' {
@@ -141,7 +145,7 @@ func ParseInt(EncodedInt []byte, i int) (int, int) {
 	return (i + 1), integer // we should return the index after the limiting e(when working with lists)
 }
 
-func ParseList(EncodedList []byte, i int) (int, []interface{}) {
+func parseList(EncodedList []byte, i int) (int, []interface{}) {
 
 	//Create a slice of interfaces
 	var mySlice []interface{}
@@ -168,7 +172,7 @@ func ParseList(EncodedList []byte, i int) (int, []interface{}) {
 
 }
 
-func ParseDict(EncodedDict []byte, i int, info *[]byte) (int, BDict) {
+func parseDict(EncodedDict []byte, i int, info *[]byte) (int, BDict) {
 
 	//Dictionaries are encoded as follows: d<bencoded string><bencoded element>e
 	// the key can only be a string
@@ -192,9 +196,9 @@ func ParseDict(EncodedDict []byte, i int, info *[]byte) (int, BDict) {
 			return i + 1, dict
 		}
 
-		// Parse key (always a string)
+		// parse key (always a string)
 		var key []byte
-		i, key = ParseString(EncodedDict, i)
+		i, key = parseString(EncodedDict, i)
 		//fmt.Println("KEY:", key)
 		currentKey := string(key)
 
@@ -235,20 +239,20 @@ func ParseValue(EncodedData []byte, i int) (int, interface{}, []byte) {
 	switch EncodedData[i] {
 
 	case 'i':
-		vi, ii := ParseInt(EncodedData, i)
+		vi, ii := parseInt(EncodedData, i)
 		return vi, ii, nil
 
 	case 'l':
-		vl, il := ParseList(EncodedData, i)
+		vl, il := parseList(EncodedData, i)
 		return vl, il, nil
 
 	case 'd':
-		vd, id := ParseDict(EncodedData, i, &infoHash)
+		vd, id := parseDict(EncodedData, i, &infoHash)
 		return vd, id, infoHash
 
 	default:
 		if IsNumeric(EncodedData[i]) {
-			vs, is := ParseString(EncodedData, i)
+			vs, is := parseString(EncodedData, i)
 			return vs, is, nil
 		}
 	}
@@ -318,40 +322,8 @@ func PrettyPrint(v interface{}, indent int) {
 
 }
 
-func test() {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{"zero int", "i0e"},
-		{"negative int", "i-7e"},
-		{"empty string", "0:"},
-		{"basic string", "4:spam"},
-		{"empty list", "le"},
-		{"int list", "li1ei2ei3ee"},
-		{"nested list", "ll4:abcdeli99eee"},
-		{"empty dict", "de"},
-		{"simple dict", "d3:agei25e4:name5:Alicee"},
-		{"nested dict", "d4:userd4:name5:Alice3:agei25eee"},
-		{"real torrent", "d8:announce35:http://tracker.example.com/announce4:infod4:name8:test.iso6:lengthi1024e12:piece lengthi512e6:pieces21:aaaaabbbbbcccccdddddeee"},
-	}
 
-	for _, tt := range tests {
-		fmt.Printf("\n=== %s ===\n", tt.name)
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("PANIC: %v\n", r)
-				}
-			}()
-			_, v, _ := ParseValue([]byte(tt.input), 0)
-			//fmt.Printf("OK: %#v\n", v)
-			PrettyPrint(v, 0)
-		}()
-	}
-}
-
-// Get values from keys
+// Get values from keys(Helper function for building Torrent struct)
 func Get(dict BDict, key string) interface{} {
 
 	for _, entry := range dict {
@@ -365,7 +337,7 @@ func Get(dict BDict, key string) interface{} {
 }
 
 // Build InfoDict
-func BuildInfo(info BDict, infoHash [20]byte) InfoDict {
+func buildInfo(info BDict, infoHash [20]byte) InfoDict {
 	var i InfoDict
 
 	// Name
@@ -421,7 +393,7 @@ func BuildInfo(info BDict, infoHash [20]byte) InfoDict {
 }
 
 // Build Torrent
-func BuildTorrent(root BDict, ih [20]byte) Torrent {
+func buildTorrent(root BDict, ih [20]byte) Torrent {
 	var t Torrent
 
 	AnnounceRaw := Get(root, "announce")
@@ -449,11 +421,29 @@ func BuildTorrent(root BDict, ih [20]byte) Torrent {
 		panic("BuildTorrent: 'info' is not a BDict")
 	}
 
-	t.Info = BuildInfo(info, ih)
+	t.Info = buildInfo(info, ih)
 	return t
 }
 
-func GetInfoHash(rawInfoDict []byte) [20]byte {
+
+func getInfoHash(rawInfoDict []byte) [20]byte {
 	hash := sha1.Sum(rawInfoDict)
 	return hash
+}
+
+
+func GetTorrent(torrentFile string) (Torrent) {
+	data, err := os.ReadFile(torrentFile)
+	if err != nil {
+		fmt.Println("Error reading the torrent file.")
+		return Torrent{}
+	}
+
+	_, rawDict, rawInfoDict := ParseValue(data, 0)
+	infoDictHash := getInfoHash(rawInfoDict)
+	Dict := rawDict.(BDict)
+	fileTorrent := buildTorrent(Dict, infoDictHash)
+
+	return fileTorrent
+
 }
